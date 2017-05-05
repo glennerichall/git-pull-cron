@@ -1,0 +1,21 @@
+{
+  "name": "git-backup",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "preferGlobal": true,
+  "bin": {
+    "git-backup": "index.js"
+  },
+  "author": "Glenn Hall",
+  "license": "ISC",
+  "dependencies": {
+    "bluebird": "^3.5.0",
+    "logrotate-stream": "^0.2.5",
+    "minimist": "^1.2.0",
+    "mkdirp": "^0.5.1",
+    "simple-git": "^1.70.0",
+    "superagent": "^3.5.2",
+    "superagent-promise": "^1.1.0"
+  }
+}
