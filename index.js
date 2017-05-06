@@ -27,24 +27,26 @@ console.log = s => {
 
 (async function () {
 
+    const promises = [];
     try {
-        const promises = [];
         let success = true;
         const workingDir = path.join(folder, server.replace(':', '_'));
 
         await mkdirp(workingDir);
         const git = sGit(workingDir);
-        let projects = await request
+
+        const getProjects = (archived) => request
             .get(`https://${server}/api/v4/projects`)
             .set('PRIVATE-TOKEN', token)
             .set('Accept', 'application/json')
-            .query({archived:true})
+            .query({archived})
             .end();
 
-        projects = projects.body;
+        let projects0 = await getProjects(false);
+        let projects1 = await getProjects(true);
+        const projects = projects0.body.concat(projects1.body);
 
         console.log(`${projects.length} projects found`);
-
 
         console.log(`backuping git remote to ${workingDir}`);
         for (let i = 0; i < projects.length && !argv.dryrun; i++) {
@@ -72,9 +74,15 @@ console.log = s => {
         success = false;
     } finally {
         await bluebird.all(promises);
-        if (success) console.log("[success] done");
-        else console.log("[failure] done");
-        toLogFile.end();
+        if (success) {
+            console.log("[success] done");
+            toLogFile.end();
+        }
+        else {
+            console.log("[failure] done");
+            toLogFile.end();
+            process.exit(1);
+        }
     }
 
 
