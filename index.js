@@ -28,8 +28,8 @@ console.log = s => {
 (async function () {
 
     const promises = [];
+	let success = true;
     try {
-        let success = true;
         const workingDir = path.join(folder, server.replace(':', '_'));
 
         await mkdirp(workingDir);
