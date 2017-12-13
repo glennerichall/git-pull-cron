@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const request = require('superagent-promise')(require('superagent'), Promise);
-const sGit = require('simple-git');
+const sGit = require('simple-git/promise');
 const bluebird = require('bluebird');
 const mkdirp = bluebird.promisify(require('mkdirp'));
 const fs = require('fs');
@@ -28,7 +28,7 @@ console.log = s => {
 (async function () {
 
     const promises = [];
-	let success = true;
+    let success = true;
     try {
         const workingDir = path.join(folder, server.replace(':', '_'));
 
@@ -54,19 +54,18 @@ console.log = s => {
             const url = project.ssh_url_to_repo;
             const dir = project.name_with_namespace.replace(/ /g, '').replace(/\//g, path.sep);
 
-            const promise = mkdirp(`${workingDir}/${dir}`)
-                .then(async() => {
-                    try {
-                        await exists(path.join(workingDir, dir, 'config'));
-                        git.cwd(path.join(workingDir, dir));
+            const promise = mkdirp(path.join(workingDir, dir))
+                .then(async () => {
+                    git.cwd(path.join(workingDir, dir));
+                    let isRepo = await git.checkIsRepo();
+                    if (isRepo) {
                         await git.raw(['remote', 'update']);
                         console.log(`[success] updating ${url}`)
-                    } catch (err) {
+                    } else {
                         await git.mirror(url, dir);
                         console.log(`[success] cloning ${url}`);
                     }
                 });
-
             promises.push(promise);
         }
     } catch (err) {
