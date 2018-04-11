@@ -9,6 +9,7 @@ const exists = bluebird.promisify(fs.access);
 const parseArgs = require('minimist');
 const stream = require('logrotate-stream');
 const path = require('path');
+const exec = bluebird.promisify(require('child_process').exec);
 
 const argv = parseArgs(process.argv);
 const token = process.env['GIT-BACKUP-TOKEN'] || argv.token || argv.t;
@@ -16,17 +17,57 @@ const server = process.env['GIT-BACKUP-SERVER'] || argv.server || argv.s;
 const folder = process.env['GIT-BACKUP-DESTINATION'] || argv.folder || argv.f || 'git-backup';
 const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-backup.log');
 
-const toLogFile = stream({file: logfile, size: '100k', keep: 5});
-
-const print = console.log.bind(console);
-console.error = ()=>{};
-console.log = s => {
-    const msg = `[${new Date().toISOString()}] ${s}`;
-    print(msg);
-    toLogFile.write(msg + "\n");
-};
-
 (async function () {
+
+    if (argv.cron) {
+        let hasMissinEnv = false;
+        if (hasMissinEnv |= !process.env['GIT-BACKUP-TOKEN']) console.log('please specify GIT-BACKUP-TOKEN environment variable');
+        if (hasMissinEnv |= !process.env['GIT-BACKUP-SERVER']) console.log('please specify GIT-BACKUP-SERVER environment variable');
+        if (hasMissinEnv |= !process.env['GIT-BACKUP-DESTINATION']) console.log('please specify GIT-BACKUP-DESTINATION environment variable');
+        if (hasMissinEnv) return;
+    }
+
+    await mkdirp(folder);
+    const toLogFile = stream({file: logfile, size: '100k', keep: 5});
+    const print = console.log.bind(console);
+    const err = console.error.bind(console);
+    console.log = s => {
+        const msg = `[${new Date().toISOString()}] ${s}`;
+        print(msg);
+        toLogFile.write(msg + "\n");
+    };
+    console.error = s=> {
+        console.log(s);
+    };
+
+    if (argv.cron) {
+        const os = require('os').platform();
+        if (os === 'win32') {
+            console.log("[info] installing Scheduled Task for Windows");
+            try {
+                await exec('schtasks /query /tn "velor\\Backup git repo"');
+                console.log(`[info] task "velor\\Backup git repo" already exists`);
+            } catch (err) {
+                try {
+                    await exec('schtasks /create /tn "velor\\Backup git repo" /sc daily /tr %userprofile%\\AppData\\Roaming\\npm\\git-backup.cmd');
+                } catch (err) {
+                    console.log(`[failure] ${err.message}`);
+                }
+            }
+        }
+        return;
+    }
+
+    if(!server) {
+        console.log('[failure] server must be specified using environment variable GIT-BACKUP-SERVER or program argument -s');
+        return;
+    }
+
+    if(!token) {
+        console.log('[failure] scm api private token must be specified using environment variable GIT-BACKUP-TOKEN or program argument -t');
+        return;
+    }
+
     const promises = [];
     let success = true;
     try {
