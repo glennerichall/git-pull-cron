@@ -19,6 +19,7 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
 const toLogFile = stream({file: logfile, size: '100k', keep: 5});
 
 const print = console.log.bind(console);
+console.error = ()=>{};
 console.log = s => {
     const msg = `[${new Date().toISOString()}] ${s}`;
     print(msg);
@@ -26,14 +27,12 @@ console.log = s => {
 };
 
 (async function () {
-
     const promises = [];
     let success = true;
     try {
         const workingDir = path.join(folder, server.replace(':', '_'));
 
         await mkdirp(workingDir);
-        const git = sGit(workingDir);
 
         const getProjects = (archived) => request
             .get(`https://${server}/api/v4/projects`)
@@ -45,6 +44,7 @@ console.log = s => {
         let projects0 = await getProjects(false);
         let projects1 = await getProjects(true);
         const projects = projects0.body.concat(projects1.body);
+        const git = sGit();
 
         console.log(`${projects.length} projects found`);
 
@@ -53,17 +53,27 @@ console.log = s => {
             const project = projects[i];
             const url = project.ssh_url_to_repo;
             const dir = project.name_with_namespace.replace(/ /g, '').replace(/\//g, path.sep);
-
-            const promise = mkdirp(path.join(workingDir, dir))
+            const dst = path.join(workingDir, dir);
+            const promise = mkdirp(dst)
                 .then(async () => {
-                    git.cwd(path.join(workingDir, dir));
-                    let isRepo = await git.checkIsRepo();
-                    if (isRepo) {
-                        await git.raw(['remote', 'update']);
-                        console.log(`[success] updating ${url}`)
-                    } else {
-                        await git.mirror(url, dir);
-                        console.log(`[success] cloning ${url}`);
+                    var action;
+                    try {
+                        // before each await on git, set back current working directory (cwd)
+                        // since async operations will have chante it for each promise
+                        git.cwd(dst);
+                        let isRepo = await git.checkIsRepo();
+                        if (isRepo) {
+                            action = 'updating';
+                            git.cwd(dst);
+                            await git.raw(['remote', 'update']);
+                        } else {
+                            action = 'cloning';
+                            git.cwd(workingDir);
+                            await git.mirror(url, dir);
+                        }
+                        console.log(`[success] ${action} ${url} to ${dir}`)
+                    } catch (err) {
+                        console.log(`[failure] ${action} ${url} to ${dir} \n ${err.message}`);
                     }
                 });
             promises.push(promise);
@@ -83,6 +93,4 @@ console.log = s => {
             process.exit(1);
         }
     }
-
-
 })();
