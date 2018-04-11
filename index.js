@@ -129,11 +129,9 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
         await bluebird.all(promises);
         if (success) {
             console.log("[success] done");
-            toLogFile.end();
         }
         else {
             console.log("[failure] done");
-            toLogFile.end();
             process.exit(1);
         }
     }
