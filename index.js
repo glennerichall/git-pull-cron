@@ -25,20 +25,33 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
         if (hasMissinEnv |= !process.env['GIT-BACKUP-SERVER']) console.log('please specify GIT-BACKUP-SERVER environment variable');
         if (hasMissinEnv |= !process.env['GIT-BACKUP-DESTINATION']) console.log('please specify GIT-BACKUP-DESTINATION environment variable');
         if (hasMissinEnv) return;
+    } else {
+        if (!server) {
+            console.log('[failure] server must be specified using environment variable GIT-BACKUP-SERVER or program argument -s');
+            return;
+        }
+        if (!token) {
+            console.log('[failure] scm api private token must be specified using environment variable GIT-BACKUP-TOKEN or program argument -t');
+            return;
+        }
+    }
+    try {
+        await mkdirp(folder);
+        const toLogFile = stream({file: logfile, size: '100k', keep: 5});
+        const print = console.log.bind(console);
+        const err = console.error.bind(console);
+        console.log = s => {
+            const msg = `[${new Date().toISOString()}] ${s}`;
+            print(msg);
+            toLogFile.write(msg + "\n");
+        };
+        console.error = s => {
+            console.log(s);
+        };
+    } catch (err) {
+        console.log(`[failure] ${err.message}`);
     }
 
-    await mkdirp(folder);
-    const toLogFile = stream({file: logfile, size: '100k', keep: 5});
-    const print = console.log.bind(console);
-    const err = console.error.bind(console);
-    console.log = s => {
-        const msg = `[${new Date().toISOString()}] ${s}`;
-        print(msg);
-        toLogFile.write(msg + "\n");
-    };
-    console.error = s=> {
-        console.log(s);
-    };
 
     if (argv.cron) {
         const os = require('os').platform();
@@ -55,16 +68,6 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
                 }
             }
         }
-        return;
-    }
-
-    if(!server) {
-        console.log('[failure] server must be specified using environment variable GIT-BACKUP-SERVER or program argument -s');
-        return;
-    }
-
-    if(!token) {
-        console.log('[failure] scm api private token must be specified using environment variable GIT-BACKUP-TOKEN or program argument -t');
         return;
     }
 
