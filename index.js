@@ -4,6 +4,7 @@ const request = require('superagent-promise')(require('superagent'), Promise);
 const sGit = require('simple-git/promise');
 const bluebird = require('bluebird');
 const mkdirp = bluebird.promisify(require('mkdirp'));
+const rimraf = bluebird.promisify(require('rimraf'));
 const fs = require('fs');
 const exists = bluebird.promisify(fs.access);
 const parseArgs = require('minimist');
@@ -85,9 +86,14 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
             .query({archived})
             .end();
 
-        let projects0 = await getProjects(false);
-        let projects1 = await getProjects(true);
-        const projects = projects0.body.concat(projects1.body);
+        let projects0 = (await getProjects(false)).body;
+        let projects1 = (await getProjects(true)).body;
+        const projects = projects0;
+        for (let i = 0; i < projects1.length; i++) {
+            if (!projects.some(p => p.id == projects1[i].id)) {
+                projects.push(projects1[i]);
+            }
+        }
         const git = sGit();
 
         console.log(`${projects.length} projects found`);
@@ -111,9 +117,11 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
                             git.cwd(dst);
                             await git.raw(['remote', 'update']);
                         } else {
+                            await rimraf(dst);
+                            await mkdirp(dst);
                             action = 'cloning';
                             git.cwd(workingDir);
-                            await git.mirror(url, dir);
+                            await git.clone(url, dir);
                         }
                         console.log(`[success] ${action} ${url} to ${dir}`)
                     } catch (err) {
