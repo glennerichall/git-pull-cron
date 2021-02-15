@@ -68,7 +68,7 @@ const getRepos = require(`./${api}`);
         let args = process.argv
             .slice(2)
             .filter(x => x !== '--cron')
-            .filter(arg => arg.startsWith('--credentials='))
+            .filter(arg => !arg.startsWith('--credentials='))
             .map(arg => `"${arg}"`)
             .join(' ');
 
