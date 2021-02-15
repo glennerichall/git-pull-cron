@@ -1,6 +1,6 @@
 {
   "name": "git-pull-cron",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "",
   "main": "index.js",
   "preferGlobal": true,
