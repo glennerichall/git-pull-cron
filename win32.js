@@ -8,7 +8,7 @@ module.exports = async (args) => {
     const createTask = async () => {
         try {
 
-            await exec(`schtasks /create /tn "${name}" /sc daily /tr "%userprofile%\\AppData\\Roaming\\npm\\git-pull-cron.cmd" ${args}`);
+            await exec(`schtasks /create /tn "${name}" /sc daily /tr "%userprofile%\\AppData\\Roaming\\npm\\git-pull-cron.cmd ${args}" `);
         } catch (err) {
             console.log(`[failure] ${err.message}`);
         }
