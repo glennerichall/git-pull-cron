@@ -1,11 +1,11 @@
 {
   "name": "git-pull-cron",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "",
   "main": "index.js",
   "preferGlobal": true,
   "bin": {
-    "git-backup": "index.js"
+    "git-pull-cron": "index.js"
   },
   "author": "Glenn Hall",
   "license": "ISC",
