@@ -1,41 +1,48 @@
 #!/usr/bin/env node
 
-const request = require('superagent-promise')(require('superagent'), Promise);
-const sGit = require('simple-git/promise');
-const bluebird = require('bluebird');
-const mkdirp = bluebird.promisify(require('mkdirp'));
-const rimraf = bluebird.promisify(require('rimraf'));
+const util = require('util');
+const simpleGit = require('simple-git');
+
+const mkdirp = require('mkdirp');
+const rimraf = util.promisify(require('rimraf'));
 const fs = require('fs');
-const exists = bluebird.promisify(fs.access);
 const parseArgs = require('minimist');
 const stream = require('logrotate-stream');
 const path = require('path');
-const exec = bluebird.promisify(require('child_process').exec);
 
 const argv = parseArgs(process.argv);
-const token = process.env['GIT-BACKUP-TOKEN'] || argv.token || argv.t;
-const server = process.env['GIT-BACKUP-SERVER'] || argv.server || argv.s;
-const folder = process.env['GIT-BACKUP-DESTINATION'] || argv.folder || argv.f || 'git-backup';
+
+let credentials = process.env['GIT-CREDENTIALS'] || argv.credentials || "credentials.json";
+credentials = path.resolve(credentials);
+
+let configs = {};
+
+if (fs.existsSync(credentials)) {
+    configs = fs.readFileSync(credentials);
+    configs = JSON.parse(configs);
+}
+
+const token = process.env['GIT-BACKUP-TOKEN'] || argv.token || argv.t || configs.token;
+const server = process.env['GIT-BACKUP-SERVER'] || argv.server || argv.s || configs.server;
+const folder = process.env['GIT-BACKUP-DESTINATION'] || argv.destination || argv.d || configs.destination || './git-backup';
+const login = process.env['GIT-BACKUP-LOGIN'] || argv.login || argv.l || configs.login;
+
 const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-backup.log');
+const api = process.env['GIT-BACKUP-API'] || argv.api || configs.api || 'github';
+
+const getRepos = require(`./${api}`);
 
 (async function () {
 
-    if (argv.cron) {
-        let hasMissinEnv = false;
-        if (hasMissinEnv |= !process.env['GIT-BACKUP-TOKEN']) console.log('please specify GIT-BACKUP-TOKEN environment variable');
-        if (hasMissinEnv |= !process.env['GIT-BACKUP-SERVER']) console.log('please specify GIT-BACKUP-SERVER environment variable');
-        if (hasMissinEnv |= !process.env['GIT-BACKUP-DESTINATION']) console.log('please specify GIT-BACKUP-DESTINATION environment variable');
-        if (hasMissinEnv) return;
-    } else {
-        if (!server) {
-            console.log('[failure] server must be specified using environment variable GIT-BACKUP-SERVER or program argument -s');
-            return;
-        }
-        if (!token) {
-            console.log('[failure] scm api private token must be specified using environment variable GIT-BACKUP-TOKEN or program argument -t');
-            return;
-        }
+    if (!server) {
+        console.error('[failure] server must be specified using environment variable GIT-BACKUP-SERVER or program argument -s');
+        return;
     }
+    if (!token) {
+        console.error('[failure] private token must be specified using environment variable GIT-BACKUP-TOKEN or program argument -t');
+        return;
+    }
+
     try {
         await mkdirp(folder);
         const toLogFile = stream({file: logfile, size: '100k', keep: 5});
@@ -55,19 +62,26 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
 
 
     if (argv.cron) {
+
         const os = require('os').platform();
-        if (os === 'win32') {
-            console.log("[info] installing Scheduled Task for Windows");
-            try {
-                await exec('schtasks /query /tn "velor\\Backup git repo"');
-                console.log(`[info] task "velor\\Backup git repo" already exists`);
-            } catch (err) {
-                try {
-                    await exec('schtasks /create /tn "velor\\Backup git repo" /sc daily /tr %userprofile%\\AppData\\Roaming\\npm\\git-backup.cmd');
-                } catch (err) {
-                    console.log(`[failure] ${err.message}`);
-                }
-            }
+
+        let args = process.argv
+            .slice(2)
+            .filter(x => x !== '--cron')
+            .filter(arg => arg.startsWith('--credentials='))
+            .map(arg => `"${arg}"`)
+            .join(' ');
+
+        if(fs.existsSync(credentials)){
+            args += ` --credentials="${credentials}"`;
+        }
+
+        if (os === 'win32' ) {
+            await require('./win32')(args);
+        } else if(os === 'linux') {
+            await require('./linux')(args);
+        } else {
+            console.log('[failure] only linux, Macos and Windows are supported');
         }
         return;
     }
@@ -75,43 +89,34 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
     const promises = [];
     let success = true;
     try {
-        const workingDir = path.join(folder, server.replace(':', '_'));
+        const workingDir = path.join(folder, server
+            .replace('https://', '')
+            .replace(':', '_'));
 
         await mkdirp(workingDir);
 
-        const getProjects = (archived) => request
-            .get(`https://${server}/api/v4/projects`)
-            .set('PRIVATE-TOKEN', token)
-            .set('Accept', 'application/json')
-            .query({archived})
-            .end();
+        let repos = await getRepos({server, token, login});
 
-        let projects0 = (await getProjects(false)).body;
-        let projects1 = (await getProjects(true)).body;
-        const projects = projects0;
-        for (let i = 0; i < projects1.length; i++) {
-            if (!projects.some(p => p.id == projects1[i].id)) {
-                projects.push(projects1[i]);
-            }
-        }
-        const git = sGit();
+        const git = simpleGit();
 
-        console.log(`${projects.length} projects found`);
+        console.log(`${repos.length} projects found`);
 
         console.log(`backuping git remote to ${workingDir}`);
-        for (let i = 0; i < projects.length && !argv.dryrun; i++) {
-            const project = projects[i];
-            const url = project.ssh_url_to_repo;
-            const dir = project.name_with_namespace.replace(/ /g, '').replace(/\//g, path.sep);
+        for (let i = 0; i < repos.length && !argv.dryrun; i++) {
+
+            const project = repos[i];
+            const url = project.url;
+            const dir = project.name.replace(/ /g, '').replace(/\//g, path.sep);
+
             const dst = path.join(workingDir, dir);
             const promise = mkdirp(dst)
                 .then(async () => {
-                    var action;
+                    let action;
                     try {
                         // before each await on git, set back current working directory (cwd)
                         // since async operations will have chante it for each promise
                         git.cwd(dst);
-                        let isRepo = await git.checkIsRepo();
+                        let isRepo = await git.checkIsRepo('root');
                         if (isRepo) {
                             action = 'updating';
                             git.cwd(dst);
@@ -134,11 +139,10 @@ const logfile = process.env['GIT-BACKUP-LOGFILE'] || path.join(folder, 'git-back
         console.log(`[failure] ${err.message}`);
         success = false;
     } finally {
-        await bluebird.all(promises);
+        await Promise.all(promises);
         if (success) {
             console.log("[success] done");
-        }
-        else {
+        } else {
             console.log("[failure] done");
             process.exit(1);
         }
