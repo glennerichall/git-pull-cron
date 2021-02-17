@@ -166,7 +166,7 @@ const api = (process.env['GIT-BACKUP-API'] || argv.api || configs.api || 'github
                         }
                         console.log(`[success] ${action} ${url} to ${dir}`)
                     } catch (err) {
-                        console.log(`[failure] ${action} ${url} to ${dir} \n ${err.message}`);
+                        console.log(`[failure] ${action} ${url} to ${dir} \n ${err.trace}`);
                     }
                 });
             promises.push(promise);
