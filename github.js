@@ -15,7 +15,11 @@ module.exports = async ({server, token, login}) => {
                     if (err) reject(err);
                     else resolve(res);
                 }));
+
     let res = await getProjects();
+    if(res.status !== 200) {
+        throw new Error(`request error ${res.status} at ${url}`)
+    }
     res = res.body;
 
     return res.items.map(project => {

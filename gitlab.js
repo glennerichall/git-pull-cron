@@ -16,6 +16,7 @@ module.exports = async ({server, token}) => {
 
     let projects0 = (await getProjects(false)).body;
     let projects1 = (await getProjects(true)).body;
+
     const projects = projects0;
 
     for (let i = 0; i < projects1.length; i++) {
